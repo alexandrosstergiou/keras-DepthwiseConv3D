@@ -177,7 +177,7 @@ class DepthwiseConv3D(Conv3D):
                                   self.kernel_size[1],
                                   self.kernel_size[2],
                                   1,
-                                  input_dim * self.depth_multiplier)
+                                  self.depth_multiplier)
 
         self.depthwise_kernel = self.add_weight(
             shape=depthwise_kernel_shape,
@@ -216,6 +216,14 @@ class DepthwiseConv3D(Conv3D):
                                       padding=self._padding,dilations=dilation,
                                       data_format=self._data_format)
                          for inp_c in channels_l])
+
+        # Add original channels dim at the end of the tensor
+        outputs = tf.transpose(outputs, (1, 2, 3, 4, 5, 0))
+        # Convert to tensor [batch, depth, height, width, new_channels/depth_multiplier * original_channels]
+        shape = outputs.get_shape().as_list()
+
+        outputs = tf.reshape(outputs, [-1, shape[1] , shape[2], shape[3], shape[4] * shape[5]])
+        print(outputs.shape)
 
         if self.bias:
             outputs = K.bias_add(
