@@ -5,7 +5,7 @@ An extension of separable convolutions for 3D volumes. Performs volumetric convo
 *Base code for the implementation is used from: https://github.com/titu1994/MobileNetworks/blob/master/depthwise_conv.py*
 
 
-<img src="https://github.com/alexandrosstergiou/keras-DepthwiseConv3D/images/depthwise_3dconv.png?raw=true" height=100% width=100%>
+<img src="https://github.com/alexandrosstergiou/keras-DepthwiseConv3D/blob/master/images/depthwise_3dconv.png?raw=true" height=100% width=100%>
 
 ## Requirements
 
