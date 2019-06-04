@@ -1,6 +1,6 @@
 # Depthwise 3DConvolutions in Keras
 
-An extension of separable convolutions for 3D volumes. Performs volumetric convolutions for each channel of the input volume and will increase the output volume based on the number of convolutional operations (denoted as `depth_multiplier` inside the code). Current version only supports `channel_first` volumes as inputs.
+An extension of separable convolutions for 3D volumes. Performs volumetric convolutions for each channel of the input volume and will increase the output volume based on the number of convolutional operations (denoted as `depth_multiplier` inside the code). Current version only supports `channels_first` volumes as inputs.
 
 *Base code for the implementation is used from: https://github.com/titu1994/MobileNetworks/blob/master/depthwise_conv.py*
 
