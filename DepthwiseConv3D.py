@@ -198,6 +198,8 @@ class DepthwiseConv3D(Conv3D):
         self.input_spec = InputSpec(ndim=5, axes={channel_axis: input_dim})
         self.built = True
 
+
+
     def call(self, inputs, training=None):
         inputs = _preprocess_conv3d_input(inputs, self.data_format)
 
@@ -207,15 +209,11 @@ class DepthwiseConv3D(Conv3D):
             dilation = (1,) + self.dilation_rate + (1,)
         else:
             b, c, d, h, w = inputs[0].shape
-            channels_l = [tf.expand_dims(inputs[0][:,i,:,:,:],1) for i in range(0,c)]
+            channels_l = tf.stack([tf.expand_dims(inputs[0][:,i,:,:,:],1) for i in range(0,c)],axis='0')
             dilation = self.dilation_rate + (1,) + (1,)
 
-
-        outputs = tf.convert_to_tensor(
-                        [tf.nn.conv3d(inp_c,self.depthwise_kernel,strides=self._strides,
-                                      padding=self._padding,dilations=dilation,
-                                      data_format=self._data_format)
-                         for inp_c in channels_l])
+        outputs = tf.convert_to_tensor([tf.nn.conv3d(input=inp_c,filter=self.depthwise_kernel,strides=self._strides,
+                      padding=self._padding,dilations=dilation,data_format=self._data_format) for inp_c in channels_l])
 
         # Add original channels dim at the end of the tensor
         outputs = tf.transpose(outputs, (1, 2, 3, 4, 5, 0))
