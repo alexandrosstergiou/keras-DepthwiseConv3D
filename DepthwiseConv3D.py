@@ -125,6 +125,7 @@ class DepthwiseConv3D(Conv3D):
                  strides=(1, 1, 1),
                  padding='valid',
                  depth_multiplier=1,
+                 group_size=None,
                  data_format=None,
                  activation=None,
                  use_bias=True,
@@ -151,6 +152,7 @@ class DepthwiseConv3D(Conv3D):
             bias_constraint=bias_constraint,
             **kwargs)
         self.depth_multiplier = depth_multiplier
+        self.group_size = group_size
         self.depthwise_initializer = initializers.get(depthwise_initializer)
         self.depthwise_regularizer = regularizers.get(depthwise_regularizer)
         self.depthwise_constraint = constraints.get(depthwise_constraint)
@@ -173,11 +175,16 @@ class DepthwiseConv3D(Conv3D):
                              '`DepthwiseConv3D` '
                              'should be defined. Found `None`.')
         input_dim = int(input_shape[channel_axis])
+
+        if (self.group_size == None):
+            self.group_size = input_dim
+
         depthwise_kernel_shape = (self.kernel_size[0],
                                   self.kernel_size[1],
                                   self.kernel_size[2],
-                                  1,
+                                  input_dim,
                                   self.depth_multiplier)
+
 
         self.depthwise_kernel = self.add_weight(
             shape=depthwise_kernel_shape,
@@ -202,28 +209,20 @@ class DepthwiseConv3D(Conv3D):
         inputs = _preprocess_conv3d_input(inputs, self.data_format)
 
         if self.data_format == 'channels_last':
-            b, d, h, w, c = inputs[0].shape
-            channels_l = [tf.expand_dims(inputs[0][:,:,:,:,i],-1) for i in range(0,c)]
             dilation = (1,) + self.dilation_rate + (1,)
         else:
-            b, c, d, h, w = inputs[0].shape
-            channels_l = [tf.expand_dims(inputs[0][:,i,:,:,:],1) for i in range(0,c)]
             dilation = self.dilation_rate + (1,) + (1,)
 
 
-        outputs = tf.convert_to_tensor(
-                        [tf.nn.conv3d(inp_c,self.depthwise_kernel,strides=self._strides,
-                                      padding=self._padding,dilations=dilation,
-                                      data_format=self._data_format)
-                         for inp_c in channels_l])
+        inputs = tf.split(inputs[0], self.group_size, axis=1 if self._data_format == 'NCDHW' else 4)
+        filters = tf.split(self.depthwise_kernel, self.group_size, axis=3)
+        outputs = tf.concat(
+            [tf.nn.conv3d(i, f,
+                strides=self._strides,
+                padding=self._padding,
+                dilations=dilation,
+                data_format=self._data_format) for i, f in zip(inputs, filters)], axis=1 if format == 'NCDHW' else 4)
 
-        # Add original channels dim at the end of the tensor
-        outputs = tf.transpose(outputs, (1, 2, 3, 4, 5, 0))
-        # Convert to tensor [batch, depth, height, width, new_channels/depth_multiplier * original_channels]
-        shape = outputs.get_shape().as_list()
-
-        outputs = tf.reshape(outputs, [-1, shape[1] , shape[2], shape[3], shape[4] * shape[5]])
-        print(outputs.shape)
 
         if self.bias:
             outputs = K.bias_add(
