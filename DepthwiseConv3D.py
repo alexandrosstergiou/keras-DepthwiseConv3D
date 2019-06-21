@@ -64,8 +64,6 @@ class DepthwiseConv3D(Conv3D):
             specifying the strides of the convolution along the depth, width and height.
             Can be a single integer to specify the same value for
             all spatial dimensions.
-            Specifying any stride value != 1 is incompatible with specifying
-            any `dilation_rate` value != 1.
         padding: one of `"valid"` or `"same"` (case-insensitive).
         depth_multiplier: The number of depthwise convolution output channels
             for each input channel.
@@ -174,16 +172,16 @@ class DepthwiseConv3D(Conv3D):
             raise ValueError('The channel dimension of the inputs to '
                              '`DepthwiseConv3D` '
                              'should be defined. Found `None`.')
-        input_dim = int(input_shape[channel_axis])
+        self.input_dim = int(input_shape[channel_axis])
 
         if (self.group_size == None):
-            self.group_size = input_dim
+            self.group_size = 1
 
         depthwise_kernel_shape = (self.kernel_size[0],
                                   self.kernel_size[1],
                                   self.kernel_size[2],
-                                  input_dim,
-                                  self.depth_multiplier)
+                                  self.group_size,
+                                  self.group_size*self.depth_multiplier)
 
 
         self.depthwise_kernel = self.add_weight(
@@ -194,7 +192,7 @@ class DepthwiseConv3D(Conv3D):
             constraint=self.depthwise_constraint)
 
         if self.use_bias:
-            self.bias = self.add_weight(shape=(input_dim * self.depth_multiplier,),
+            self.bias = self.add_weight(shape=(self.input_dim * self.depth_multiplier,),
                                         initializer=self.bias_initializer,
                                         name='bias',
                                         regularizer=self.bias_regularizer,
@@ -202,7 +200,7 @@ class DepthwiseConv3D(Conv3D):
         else:
             self.bias = None
         # Set input spec.
-        self.input_spec = InputSpec(ndim=5, axes={channel_axis: input_dim})
+        self.input_spec = InputSpec(ndim=5, axes={channel_axis: self.input_dim})
         self.built = True
 
     def call(self, inputs, training=None):
@@ -214,14 +212,13 @@ class DepthwiseConv3D(Conv3D):
             dilation = self.dilation_rate + (1,) + (1,)
 
 
-        inputs = tf.split(inputs[0], self.group_size, axis=1 if self._data_format == 'NCDHW' else 4)
-        filters = tf.split(self.depthwise_kernel, self.group_size, axis=3)
+        inputs = tf.split(inputs[0], self.input_dim//self.group_size, axis=1 if self._data_format == 'NCDHW' else 4)
         outputs = tf.concat(
-            [tf.nn.conv3d(i, f,
+            [tf.nn.conv3d(inp, self.depthwise_kernel,
                 strides=self._strides,
                 padding=self._padding,
                 dilations=dilation,
-                data_format=self._data_format) for i, f in zip(inputs, filters)], axis=1 if format == 'NCDHW' else 4)
+                data_format=self._data_format) for inp in inputs], axis=1 if format == 'NCDHW' else 4)
 
 
         if self.bias:
