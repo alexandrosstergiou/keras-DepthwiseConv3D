@@ -221,7 +221,7 @@ class DepthwiseConv3D(Conv3D):
                 data_format=self._data_format) for inp in inputs], axis=1 if format == 'NCDHW' else 4)
 
 
-        if self.bias:
+        if self.bias is not None:
             outputs = K.bias_add(
                 outputs,
                 self.bias,
