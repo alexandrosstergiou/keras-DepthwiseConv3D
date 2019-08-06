@@ -48,9 +48,9 @@ def depthwise_conv3d_args_preprocessor(args, kwargs):
 
 
 class DepthwiseConv3D(Conv3D):
-    """Depthwise separable 3D convolution.
-    Depthwise Separable convolutions consist in performing
-    just the first step in a depthwise spatial convolution
+    """Depthwise 3D convolution.
+    Depth-wise part of separable convolutions consist in performing
+    just the first step/operation
     (which acts on each input channel separately).
     It does not perform the pointwise convolution (second step).
     The `depth_multiplier` argument controls how many
@@ -69,6 +69,7 @@ class DepthwiseConv3D(Conv3D):
             for each input channel.
             The total number of depthwise convolution output
             channels will be equal to `filterss_in * depth_multiplier`.
+        depth_size: The depth size of the convolution (as a variant of the original Depthwise conv)
         data_format: A string,
             one of `channels_last` (default) or `channels_first`.
             The ordering of the dimensions in the inputs.
@@ -123,7 +124,7 @@ class DepthwiseConv3D(Conv3D):
                  strides=(1, 1, 1),
                  padding='valid',
                  depth_multiplier=1,
-                 group_size=None,
+                 depth_size=None,
                  data_format=None,
                  activation=None,
                  use_bias=True,
@@ -150,7 +151,7 @@ class DepthwiseConv3D(Conv3D):
             bias_constraint=bias_constraint,
             **kwargs)
         self.depth_multiplier = depth_multiplier
-        self.group_size = group_size
+        self.depth_size = depth_size
         self.depthwise_initializer = initializers.get(depthwise_initializer)
         self.depthwise_regularizer = regularizers.get(depthwise_regularizer)
         self.depthwise_constraint = constraints.get(depthwise_constraint)
@@ -174,14 +175,14 @@ class DepthwiseConv3D(Conv3D):
                              'should be defined. Found `None`.')
         self.input_dim = int(input_shape[channel_axis])
 
-        if (self.group_size == None):
-            self.group_size = 1
+        if (self.depth_size == None):
+            self.depth_size = 1
 
         depthwise_kernel_shape = (self.kernel_size[0],
                                   self.kernel_size[1],
                                   self.kernel_size[2],
-                                  self.group_size,
-                                  self.group_size*self.depth_multiplier)
+                                  self.depth_size,
+                                  self.depth_size*self.depth_multiplier)
 
 
         self.depthwise_kernel = self.add_weight(
@@ -212,7 +213,7 @@ class DepthwiseConv3D(Conv3D):
             dilation = self.dilation_rate + (1,) + (1,)
 
 
-        inputs = tf.split(inputs[0], self.input_dim//self.group_size, axis=1 if self._data_format == 'NCDHW' else 4)
+        inputs = tf.split(inputs[0], self.input_dim//self.depth_size, axis=1 if self._data_format == 'NCDHW' else 4)
         outputs = tf.concat(
             [tf.nn.conv3d(inp, self.depthwise_kernel,
                 strides=self._strides,
