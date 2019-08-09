@@ -69,7 +69,7 @@ class DepthwiseConv3D(Conv3D):
             for each input channel.
             The total number of depthwise convolution output
             channels will be equal to `filterss_in * depth_multiplier`.
-        depth_size: The depth size of the convolution (as a variant of the original Depthwise conv)
+        groups: The depth size of the convolution (as a variant of the original Depthwise conv)
         data_format: A string,
             one of `channels_last` (default) or `channels_first`.
             The ordering of the dimensions in the inputs.
@@ -124,7 +124,7 @@ class DepthwiseConv3D(Conv3D):
                  strides=(1, 1, 1),
                  padding='valid',
                  depth_multiplier=1,
-                 depth_size=None,
+                 groups=None,
                  data_format=None,
                  activation=None,
                  use_bias=True,
@@ -151,7 +151,7 @@ class DepthwiseConv3D(Conv3D):
             bias_constraint=bias_constraint,
             **kwargs)
         self.depth_multiplier = depth_multiplier
-        self.depth_size = depth_size
+        self.groups = groups
         self.depthwise_initializer = initializers.get(depthwise_initializer)
         self.depthwise_regularizer = regularizers.get(depthwise_regularizer)
         self.depthwise_constraint = constraints.get(depthwise_constraint)
@@ -175,14 +175,20 @@ class DepthwiseConv3D(Conv3D):
                              'should be defined. Found `None`.')
         self.input_dim = int(input_shape[channel_axis])
 
-        if (self.depth_size == None):
-            self.depth_size = 1
+        if (self.groups > self.input_dim):
+            raise ValueError('The number of groups cannot exceed the number of channels')
+
+        if (self.input_dim % self.groups != 0):
+            raise ValueError('Warning! The channels dimension is not devisible by the group size chosen')
+
+        if (self.groups == None):
+            self.groups = self.input_dim
 
         depthwise_kernel_shape = (self.kernel_size[0],
                                   self.kernel_size[1],
                                   self.kernel_size[2],
-                                  self.depth_size,
-                                  self.depth_size*self.depth_multiplier)
+                                  self.input_dim,
+                                  self.depth_multiplier)
 
 
         self.depthwise_kernel = self.add_weight(
@@ -193,7 +199,7 @@ class DepthwiseConv3D(Conv3D):
             constraint=self.depthwise_constraint)
 
         if self.use_bias:
-            self.bias = self.add_weight(shape=(self.input_dim * self.depth_multiplier,),
+            self.bias = self.add_weight(shape=(self.groups * self.depth_multiplier,),
                                         initializer=self.bias_initializer,
                                         name='bias',
                                         regularizer=self.bias_regularizer,
@@ -212,14 +218,21 @@ class DepthwiseConv3D(Conv3D):
         else:
             dilation = self.dilation_rate + (1,) + (1,)
 
+        if self._data_format == 'NCDHW' :
+            outputs = tf.concat(
+                [tf.nn.conv3d(inputs[0][:,i:i+self.input_dim//self.groups,:,:,:], self.depthwise_kernel[:,:,:,i:i+self.input_dim//self.groups,:],
+                    strides=self._strides,
+                    padding=self._padding,
+                    dilations=dilation,
+                    data_format=self._data_format) for i in range(0,self.input_dim,self.input_dim//self.groups)], axis=1)
 
-        inputs = tf.split(inputs[0], self.input_dim//self.depth_size, axis=1 if self._data_format == 'NCDHW' else 4)
-        outputs = tf.concat(
-            [tf.nn.conv3d(inp, self.depthwise_kernel,
-                strides=self._strides,
-                padding=self._padding,
-                dilations=dilation,
-                data_format=self._data_format) for inp in inputs], axis=1 if format == 'NCDHW' else 4)
+        else:
+            outputs = tf.concat(
+                [tf.nn.conv3d(inputs[0][:,:,:,:,i:i+self.input_dim//self.groups], self.depthwise_kernel[:,:,:,i:i+self.input_dim//self.groups,:],
+                    strides=self._strides,
+                    padding=self._padding,
+                    dilations=dilation,
+                    data_format=self._data_format) for i in range(0,self.input_dim,self.input_dim//self.groups)], axis=-1)
 
 
         if self.bias is not None:
@@ -238,12 +251,12 @@ class DepthwiseConv3D(Conv3D):
             depth = input_shape[2]
             rows = input_shape[3]
             cols = input_shape[4]
-            out_filters = input_shape[1] * self.depth_multiplier
+            out_filters = slef.groups * self.depth_multiplier
         elif self.data_format == 'channels_last':
             depth = input_shape[1]
             rows = input_shape[2]
             cols = input_shape[3]
-            out_filters = input_shape[4] * self.depth_multiplier
+            out_filters = self.groups * self.depth_multiplier
 
         depth = conv_utils.conv_output_length(depth, self.kernel_size[0],
                                              self.padding,
