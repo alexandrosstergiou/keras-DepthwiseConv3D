@@ -160,6 +160,7 @@ class DepthwiseConv3D(Conv3D):
         self._padding = _preprocess_padding(self.padding)
         self._strides = (1,) + self.strides + (1,)
         self._data_format = "NDHWC"
+        self.input_dim = None
 
     def build(self, input_shape):
         if len(input_shape) < 5:
@@ -182,14 +183,13 @@ class DepthwiseConv3D(Conv3D):
             raise ValueError('The number of groups cannot exceed the number of channels')
 
         if self.input_dim % self.groups != 0:
-            raise ValueError('Warning! The channels dimension is not devisible by the group size chosen')
+            raise ValueError('Warning! The channels dimension is not divisible by the group size chosen')
 
         depthwise_kernel_shape = (self.kernel_size[0],
                                   self.kernel_size[1],
                                   self.kernel_size[2],
                                   self.input_dim,
                                   self.depth_multiplier)
-
 
         self.depthwise_kernel = self.add_weight(
             shape=depthwise_kernel_shape,
@@ -218,22 +218,21 @@ class DepthwiseConv3D(Conv3D):
         else:
             dilation = self.dilation_rate + (1,) + (1,)
 
-        if self._data_format == 'NCDHW' :
+        if self._data_format == 'NCDHW':
             outputs = tf.concat(
-                [tf.nn.conv3d(inputs[0][:,i:i+self.input_dim//self.groups,:,:,:], self.depthwise_kernel[:,:,:,i:i+self.input_dim//self.groups,:],
+                [tf.nn.conv3d(inputs[0][:, i:i+self.input_dim//self.groups, :, :, :], self.depthwise_kernel[:, :, :, i:i+self.input_dim//self.groups, :],
                     strides=self._strides,
                     padding=self._padding,
                     dilations=dilation,
-                    data_format=self._data_format) for i in range(0,self.input_dim,self.input_dim//self.groups)], axis=1)
+                    data_format=self._data_format) for i in range(0, self.input_dim, self.input_dim//self.groups)], axis=1)
 
         else:
             outputs = tf.concat(
-                [tf.nn.conv3d(inputs[0][:,:,:,:,i:i+self.input_dim//self.groups], self.depthwise_kernel[:,:,:,i:i+self.input_dim//self.groups,:],
+                [tf.nn.conv3d(inputs[0][:, :, :, :, i:i+self.input_dim//self.groups], self.depthwise_kernel[:, :, :, i:i+self.input_dim//self.groups, :],
                     strides=self._strides,
                     padding=self._padding,
                     dilations=dilation,
-                    data_format=self._data_format) for i in range(0,self.input_dim,self.input_dim//self.groups)], axis=-1)
-
+                    data_format=self._data_format) for i in range(0, self.input_dim, self.input_dim//self.groups)], axis=-1)
 
         if self.bias is not None:
             outputs = K.bias_add(
